@@ -59,6 +59,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly EventService eventService = new();
     private readonly ChatTimestampService chatTimestampService;
     private readonly ChatTimeHoverService chatTimeHoverService;
+    private readonly QuickSymbolsIpcService quickSymbolsIpcService;
     private readonly IFontHandle? digitalClockFontHandle;
     private readonly IFontHandle? alarmSessionDigitalFontHandle;
     private readonly IFontHandle? technologyClockFontHandle;
@@ -131,6 +132,7 @@ public sealed class Plugin : IDalamudPlugin
     public IDalamudPluginInterface PluginInterface => pluginInterface;
     public IPluginLog Log => log;
     public IKeyState KeyState => keyState;
+    public QuickSymbolsIpcService QuickSymbolsIpc => quickSymbolsIpcService;
 
     public ConfigWindow ConfigWindow { get; private init; }
     private MainWindow MainWindow { get; init; }
@@ -197,6 +199,7 @@ public sealed class Plugin : IDalamudPlugin
 
         chatTimestampService = new ChatTimestampService(Configuration, gameInteropProvider, log);
         chatTimeHoverService = new ChatTimeHoverService(Configuration, chatGui, log, T, ChatTimeHoverPopupWindow);
+        quickSymbolsIpcService = new QuickSymbolsIpcService(pluginInterface, log, keyState);
 
         commandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
@@ -655,6 +658,7 @@ public sealed class Plugin : IDalamudPlugin
 
         chatTimestampService.Dispose();
         chatTimeHoverService.Dispose();
+        quickSymbolsIpcService.Dispose();
         maintenanceService.Dispose();
         eventService.Dispose();
 

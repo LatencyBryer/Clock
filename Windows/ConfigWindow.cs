@@ -3244,16 +3244,43 @@ public class ConfigWindow : Window, IDisposable
         // ImGui owns the actual input state.
         var inputMin = new Vector2(rowMin.X + width * 0.42f, rowMin.Y + 6f);
         var inputWidth = width * 0.52f;
+        var quickSymbolText = plugin.QuickSymbolsIpc.ConsumeAlarmLabelText();
+        if (!string.IsNullOrEmpty(quickSymbolText))
+        {
+            configuration.AlarmEditorMessage = string.Concat(configuration.AlarmEditorMessage, quickSymbolText);
+            if (configuration.AlarmEditorMessage.Length > 128)
+                configuration.AlarmEditorMessage = configuration.AlarmEditorMessage[..128];
+            configuration.Save();
+        }
+
         ImGui.SetCursorScreenPos(inputMin);
         bool inputActive;
         ImGui.SetNextItemWidth(inputWidth);
+        if (plugin.QuickSymbolsIpc.ConsumeAlarmLabelFocusRequest())
+            ImGui.SetKeyboardFocusHere();
+
         using (ImRaii.PushColor(ImGuiCol.FrameBg, new Vector4(0f, 0f, 0f, 0f)))
         using (ImRaii.PushColor(ImGuiCol.FrameBgHovered, new Vector4(1f, 1f, 1f, 0.04f)))
         using (ImRaii.PushColor(ImGuiCol.FrameBgActive, new Vector4(1f, 1f, 1f, 0.06f)))
         {
             if (ImGui.InputText("##AlarmPanelAlarmMessage", ref configuration.AlarmEditorMessage, 128))
                 configuration.Save();
-            inputActive = ImGui.IsItemActive();
+            inputActive = ImGui.IsItemActive() || ImGui.IsItemFocused();
+        }
+
+        plugin.QuickSymbolsIpc.WatchAlarmLabelInput(inputActive);
+
+        if (!inputActive && plugin.QuickSymbolsIpc.ShouldDrawAlarmLabelCaret())
+        {
+            var caretAlpha = (ImGui.GetTime() % 1.0) < 0.5 ? 0.95f : 0.35f;
+            var textWidth = ImGui.CalcTextSize(configuration.AlarmEditorMessage).X;
+            var caretX = MathF.Min(inputMin.X + inputWidth - 5f, inputMin.X + 8f + textWidth);
+            var caretY = rowMin.Y + 10f;
+            drawList.AddLine(
+                new Vector2(caretX, caretY),
+                new Vector2(caretX, caretY + ImGui.GetTextLineHeight()),
+                ImGui.GetColorU32(new Vector4(1f, 1f, 1f, caretAlpha)),
+                1f);
         }
 
         if (string.IsNullOrEmpty(configuration.AlarmEditorMessage) && !inputActive)
