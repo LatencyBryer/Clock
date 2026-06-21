@@ -1121,7 +1121,7 @@ public sealed class Plugin : IDalamudPlugin
         if (!Configuration.MaintenanceReminderEnabled && !Configuration.ShowMaintenanceOnOverlay)
             return;
 
-        if ((nowUtc - lastMaintenanceCheckUtc).TotalHours < 6 || maintenanceQueued)
+        if ((nowUtc - lastMaintenanceCheckUtc).TotalHours < 2 || maintenanceQueued)
             return;
 
         RequestMaintenanceRefresh(false);
@@ -1153,6 +1153,7 @@ public sealed class Plugin : IDalamudPlugin
         Configuration.DetectedMaintenanceTimeZoneText = maintenance.TimeZoneText;
         Configuration.DetectedMaintenanceStartUtc = maintenance.StartUtc;
         Configuration.HasDetectedMaintenanceTime = true;
+        EnsureMaintenanceReminderAlarms(DateTime.UtcNow, maintenance.StartUtc);
         Configuration.Save();
 
         return changed
@@ -1184,12 +1185,68 @@ public sealed class Plugin : IDalamudPlugin
             return;
         }
 
-        CheckMaintenanceLead(nowUtc, maintenanceUtc, TimeSpan.FromHours(24), Configuration.MaintenanceRemind24Hours);
-        CheckMaintenanceLead(nowUtc, maintenanceUtc, TimeSpan.FromHours(1), Configuration.MaintenanceRemind1Hour);
-        CheckMaintenanceLead(nowUtc, maintenanceUtc, TimeSpan.FromMinutes(15), Configuration.MaintenanceRemind15Minutes);
+        EnsureMaintenanceReminderAlarms(nowUtc, maintenanceUtc);
+        CheckMaintenanceLead(nowUtc, maintenanceUtc, TimeSpan.FromHours(5), Configuration.MaintenanceRemind24Hours, T("5 hours"));
+        CheckMaintenanceLead(nowUtc, maintenanceUtc, TimeSpan.FromHours(1), Configuration.MaintenanceRemind1Hour, T("1 hour"));
+        CheckMaintenanceLead(nowUtc, maintenanceUtc, TimeSpan.FromMinutes(15), Configuration.MaintenanceRemind15Minutes, T("15 minutes"));
     }
 
-    private void CheckMaintenanceLead(DateTime nowUtc, DateTime maintenanceUtc, TimeSpan lead, bool enabled)
+    private void EnsureMaintenanceReminderAlarms(DateTime nowUtc, DateTime maintenanceUtc)
+    {
+        if (!Configuration.MaintenanceReminderEnabled)
+            return;
+
+        var changed = false;
+        changed |= EnsureMaintenanceReminderAlarm(nowUtc, maintenanceUtc, TimeSpan.FromHours(5), Configuration.MaintenanceRemind24Hours, T("5 hours"));
+        changed |= EnsureMaintenanceReminderAlarm(nowUtc, maintenanceUtc, TimeSpan.FromHours(1), Configuration.MaintenanceRemind1Hour, T("1 hour"));
+        changed |= EnsureMaintenanceReminderAlarm(nowUtc, maintenanceUtc, TimeSpan.FromMinutes(15), Configuration.MaintenanceRemind15Minutes, T("15 minutes"));
+
+        if (changed)
+            Configuration.Save();
+    }
+
+    private bool EnsureMaintenanceReminderAlarm(DateTime nowUtc, DateTime maintenanceUtc, TimeSpan lead, bool enabled, string leadText)
+    {
+        if (!enabled)
+            return false;
+
+        var alarmUtc = maintenanceUtc - lead;
+        if (alarmUtc < nowUtc.AddMinutes(-1))
+            return false;
+
+        var zoneId = TimeZoneHelper.NormalizeTimeZoneId(Configuration.SelectedTimeZoneId);
+        var local = TimeZoneHelper.ConvertFromUtcForDisplay(alarmUtc, zoneId);
+        var dateTimeText = local.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        var message = string.Format(CultureInfo.InvariantCulture, T("Maintenance in {0}"), leadText);
+
+        var exists = Configuration.Alarms.Any(alarm =>
+            string.Equals(alarm.GetEffectiveTimeZoneId(), zoneId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(alarm.DateTimeText, dateTimeText, StringComparison.Ordinal) &&
+            string.Equals(alarm.Message, message, StringComparison.Ordinal));
+
+        if (exists)
+            return false;
+
+        Configuration.Alarms.Add(new AlarmEntry
+        {
+            DateTimeText = dateTimeText,
+            Message = message,
+            TimeZoneId = zoneId,
+            Enabled = true,
+            HasTriggered = false,
+            SnoozedUntilUtc = DateTime.MinValue,
+            SpecialTriggerUtc = DateTime.MinValue,
+            SnoozeCanceled = false,
+            SnoozeTriggered = false,
+            SnoozeEnabled = false,
+            SnoozeMinutes = 5,
+            RepeatMode = AlarmRepeatMode.None
+        });
+
+        return true;
+    }
+
+    private void CheckMaintenanceLead(DateTime nowUtc, DateTime maintenanceUtc, TimeSpan lead, bool enabled, string leadText)
     {
         if (!enabled)
             return;
@@ -1204,17 +1261,13 @@ public sealed class Plugin : IDalamudPlugin
 
         maintenanceKeys.Add(key);
 
-        var leadText = lead.TotalHours >= 1
-            ? (Math.Abs(lead.TotalHours - 24) < 0.01 ? T("24 hours") : T("1 hour"))
-            : T("15 minutes");
-
         var zone = string.IsNullOrWhiteSpace(Configuration.DetectedMaintenanceTimeZoneText)
             ? TimeZoneHelper.ToShortText(Configuration.SelectedTimeZoneId)
             : Configuration.DetectedMaintenanceTimeZoneText;
 
         var whenText = $"{Configuration.DetectedMaintenanceDateTimeText} {zone}";
         var message = string.Format(CultureInfo.InvariantCulture, T("Scheduled maintenance starts in {0}. ({1})"), leadText, whenText);
-        chatGui.Print(T(message), "Clock");
+        chatGui.Print(message, "Clock");
         toastGui.ShowQuest(message, new QuestToastOptions
         {
             PlaySound = false

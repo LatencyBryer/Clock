@@ -24,7 +24,8 @@ public sealed class ChatTimeHoverService : IDisposable
     // The chat link id is intentionally plugin-specific (ASCII-ish CLKT) and the original payloads are preserved around it.
     private const uint ChatTimeLinkId = 0x434C4B54;
     private static readonly string AmPmPart = $@"a\.?m\.?|p\.?m\.?|am|pm|a|p|{GameAmSymbol}|{GamePmSymbol}";
-    private static readonly string TimePart = @"(?:noon|midnight|(?:[01]?\d|2[0-3])(?:\s*[:h.]\s*[0-5]\d)?)";
+    private static readonly string GameNumberPart = @"(?:\d{1,2}|[\ue08f-\ue098]{1,2}|[\ue099-\ue0ae])";
+    private static readonly string TimePart = $@"(?:noon|midnight|{GameNumberPart}(?:\s*[:h.]\s*{GameNumberPart})?)";
     private static readonly string ZoneCorePart = @"(?:utc[+-]\d{1,2}(?::?\d{2})?|gmt[+-]\d{1,2}(?::?\d{2})?|[a-z]{2,5})";
     private static readonly string ZoneWrappedPart = $@"(?:[\(\[\{{]\s*)?(?:{ZoneCorePart})(?:\s*[\)\]\}}])?";
     // Zone wrappers are allowed since some texts often have things like "(PDT)" or "[EDT]", but only the clean zone code will be captured.
@@ -402,7 +403,7 @@ public sealed class ChatTimeHoverService : IDisposable
         if (normalized == "midnight")
             return true;
 
-        normalized = normalized.Replace('h', ':').Replace('.', ':');
+        normalized = NormalizeGameNumberSymbols(normalized).Replace('h', ':').Replace('.', ':');
         var parts = normalized.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length == 0 || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out hour))
             return false;
@@ -423,6 +424,37 @@ public sealed class ChatTimeHoverService : IDisposable
         }
 
         return true;
+    }
+
+
+    private static string NormalizeGameNumberSymbols(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+
+        var builder = new StringBuilder(text.Length);
+        foreach (var c in text)
+        {
+            if (TryGameNumberValue(c, out var value))
+                builder.Append(value.ToString(CultureInfo.InvariantCulture));
+            else
+                builder.Append(c);
+        }
+
+        return builder.ToString();
+    }
+
+    private static bool TryGameNumberValue(char c, out int value)
+    {
+        value = c switch
+        {
+            '\ue08f' => 0,
+            >= '\ue090' and <= '\ue098' => c - '\ue08f',
+            >= '\ue099' and <= '\ue0ae' => c - '\ue08f',
+            _ => -1,
+        };
+
+        return value >= 0 && value <= 31;
     }
 
     private static DateTime ResolveSourceDate(string text, TimeZoneInfo sourceZone)

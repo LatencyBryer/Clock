@@ -5,7 +5,7 @@
     "Punchline": "Tired of missing stuff cause everything is in another timezone? Say less.",
     "Description": "Use this to know the current time in different timezones in a customizable way.\nYou can change the text scale, colors, position and even setup Alarms!",
     "InternalName": "Clock",
-    "AssemblyVersion": "1.0.7.4",
+    "AssemblyVersion": "1.0.7.5",
     "RepoUrl": "https://github.com/LatencyBryer/clock",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,

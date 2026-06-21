@@ -995,12 +995,14 @@ public class ConfigWindow : Window, IDisposable
 
             ImGui.Spacing();
 
-            bool remind24 = configuration.MaintenanceRemind24Hours;
-            if (Checkbox(T("24 hours before"), ref remind24))
+            bool remind5 = configuration.MaintenanceRemind24Hours;
+            if (Checkbox(T("5 hours before"), ref remind5))
             {
-                configuration.MaintenanceRemind24Hours = remind24;
+                configuration.MaintenanceRemind24Hours = remind5;
                 configuration.Save();
             }
+            if (ImGui.IsItemHovered())
+                DrawTooltip(string.Format(CultureInfo.InvariantCulture, T("Create a alarm {0} before maintenance starts."), T("5 hours")));
 
             bool remind1 = configuration.MaintenanceRemind1Hour;
             if (Checkbox(T("1 hour before"), ref remind1))
@@ -1008,6 +1010,8 @@ public class ConfigWindow : Window, IDisposable
                 configuration.MaintenanceRemind1Hour = remind1;
                 configuration.Save();
             }
+            if (ImGui.IsItemHovered())
+                DrawTooltip(string.Format(CultureInfo.InvariantCulture, T("Create a alarm {0} before maintenance starts."), T("1 hour")));
 
             bool remind15 = configuration.MaintenanceRemind15Minutes;
             if (Checkbox(T("15 minutes before"), ref remind15))
@@ -1015,6 +1019,8 @@ public class ConfigWindow : Window, IDisposable
                 configuration.MaintenanceRemind15Minutes = remind15;
                 configuration.Save();
             }
+            if (ImGui.IsItemHovered())
+                DrawTooltip(string.Format(CultureInfo.InvariantCulture, T("Create a alarm {0} before maintenance starts."), T("15 minutes")));
 
             ImGui.Spacing();
             ImGui.TextDisabled(T("Automatic checks run while reminders or maintenance overlay are enabled."));

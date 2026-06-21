@@ -92,6 +92,13 @@ public sealed class LodestoneMaintenanceService : IDisposable
         $@"(?<endHour>\d{{1,2}}):(?<endMinute>\d{{2}})\s*{ZonePattern}",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex EnglishFromWindowRegex = new(
+        $@"\bfrom\s+(?<startMonth>{MonthNamePattern})\s+(?<startDay>\d{{1,2}}),?\s+(?<startYear>\d{{4}})\s+" +
+        $@"(?<startHour>\d{{1,2}}):(?<startMinute>\d{{2}})\s*(?<startPeriod>a\.m\.|p\.m\.|am|pm)\s+{TimeSeparatorPattern}\s+" +
+        $@"(?:(?<endMonth>{MonthNamePattern})\s+(?<endDay>\d{{1,2}}),?\s+(?<endYear>\d{{4}})\s+)?" +
+        $@"(?<endHour>\d{{1,2}}):(?<endMinute>\d{{2}})\s*(?<endPeriod>a\.m\.|p\.m\.|am|pm)\s*{ZonePattern}",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private readonly HttpClient httpClient = new();
     // Keeping setup close to the constructor makes the object lifecycle easier to trace.
 
@@ -195,8 +202,7 @@ public sealed class LodestoneMaintenanceService : IDisposable
         if (ShouldSkipTitleOrText(title, text) || !LooksLikeGameMaintenanceNotice(title, text, language))
             return false;
 
-        var dateSection = ExtractDateSection(text, language);
-        var match = FindMaintenanceWindowMatch(dateSection);
+        var match = FindMaintenanceWindowMatch(text, language);
         if (!match.Success)
             return false;
 
@@ -226,7 +232,7 @@ public sealed class LodestoneMaintenanceService : IDisposable
         maintenance = new LodestoneMaintenanceInfo(
             title,
             url,
-            localStart.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+            FormatLodestoneDisplayTime(localStart),
             zoneText,
             startUtc,
             endUtc);
@@ -299,8 +305,17 @@ public sealed class LodestoneMaintenanceService : IDisposable
         return text.Substring(start, length).Trim();
     }
 
-    private static Match FindMaintenanceWindowMatch(string dateSection)
+    private static Match FindMaintenanceWindowMatch(string text, LodestoneMaintenanceLanguage language)
     {
+        var dateSection = ExtractDateSection(text, language);
+
+        if (language is LodestoneMaintenanceLanguage.EnglishUs or LodestoneMaintenanceLanguage.EnglishUk)
+        {
+            var fromMatch = EnglishFromWindowRegex.Match(dateSection);
+            if (fromMatch.Success)
+                return fromMatch;
+        }
+
         var match = EnglishMonthWindowRegex.Match(dateSection);
         if (match.Success)
             return match;
@@ -313,7 +328,13 @@ public sealed class LodestoneMaintenanceService : IDisposable
         if (match.Success)
             return match;
 
-        return JapaneseWindowRegex.Match(dateSection);
+        match = JapaneseWindowRegex.Match(dateSection);
+        if (match.Success)
+            return match;
+
+        return language is LodestoneMaintenanceLanguage.EnglishUs or LodestoneMaintenanceLanguage.EnglishUk
+            ? EnglishFromWindowRegex.Match(text)
+            : Match.Empty;
     }
 
     private static bool ShouldSkipTitleOrText(string title, string text)
@@ -399,6 +420,22 @@ public sealed class LodestoneMaintenanceService : IDisposable
             : text[start..];
     }
 
+
+    private static string FormatLodestoneDisplayTime(DateTime localTime)
+    {
+        var period = localTime.Hour < 12 ? "A.M." : "P.M.";
+        var hour = localTime.Hour % 12;
+        if (hour == 0)
+            hour = 12;
+
+        return string.Format(
+            CultureInfo.InvariantCulture,
+            "{0:yyyy-MM-dd} {1:00}:{2:00} {3}",
+            localTime,
+            hour,
+            localTime.Minute,
+            period);
+    }
 
     private static DateTime ConvertLodestoneLocalToUtc(DateTime localTime, TimeZoneInfo timeZone, TimeSpan? fixedZoneOffset)
     {
